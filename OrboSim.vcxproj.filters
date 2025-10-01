@@ -88,5 +88,8 @@
     <None Include="point.vs">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="nbody.comp">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
