@@ -1,6 +1,6 @@
-//#include "imgui/imgui.h"
-//#include "imgui/imgui_impl_glfw.h"
-//#include "imgui/imgui_impl_opengl3.h"
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_glfw.h"
+#include "imgui/imgui_impl_opengl3.h"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -12,6 +12,9 @@
 
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
+bool cameraMode = false;
+bool tabPressed = false;
+
 
 Camera camera(glm::vec3(0.0f, 0.0f, 15.0f));
 float deltaTime = 0.0f;
@@ -51,8 +54,8 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 
     lastX = xpos;
     lastY = ypos;
-
-    camera.ProcessMouseMovement(xoffset, yoffset);
+    if(cameraMode)
+        camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 void processInput(GLFWwindow* window) {
@@ -67,6 +70,22 @@ void processInput(GLFWwindow* window) {
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS && !tabPressed)
+    {
+        cameraMode = !cameraMode;
+        if (cameraMode)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
+        else
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        tabPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_RELEASE)
+    {
+        tabPressed = false;
+    }
+        
 }
 
 void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& indices, int sectorCount, int stackCount) {
@@ -75,24 +94,21 @@ void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& ind
     float stackStep = glm::pi<float>() / stackCount;
     float sectorAngle, stackAngle;
 
-    // vertices
-    for (int i = 0; i <= stackCount; ++i) {
-        stackAngle = glm::pi<float>() / 2 - i * stackStep; // from pi/2 to -pi/2
+    for (int i = 0; i <= stackCount; i++) {
+        stackAngle = glm::pi<float>() / 2 - i * stackStep;
         xy = cosf(stackAngle);
         z = sinf(stackAngle);
 
-        for (int j = 0; j <= sectorCount; ++j) {
+        for (int j = 0; j <= sectorCount; j++) {
             sectorAngle = j * sectorStep;
 
             x = xy * cosf(sectorAngle);
             y = xy * sinf(sectorAngle);
 
-            // Position
             vertices.push_back(x);
             vertices.push_back(y);
             vertices.push_back(z);
 
-            // Normal (same as position for a unit sphere)
             glm::vec3 normal = glm::normalize(glm::vec3(x, y, z));
             vertices.push_back(normal.x);
             vertices.push_back(normal.y);
@@ -100,8 +116,7 @@ void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& ind
         }
     }
 
-    // indices
-    for (int i = 0; i < stackCount; ++i) {
+    for (int i = 0; i < stackCount; i++) {
         int k1 = i * (sectorCount + 1);
         int k2 = k1 + sectorCount + 1;
 
@@ -121,8 +136,8 @@ void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& ind
 }
 
 
-void updatePhysics(std::vector<Body>& bodies, float dt) {
-    const float G = 1.0f;
+void updatePhysics(std::vector<Body>& bodies, float dt, float Ga) {
+    const float G = Ga;
     std::vector<glm::vec3> forces(bodies.size(), glm::vec3(0.0f));
 
     for (size_t i = 0; i < bodies.size(); i++) {
@@ -156,38 +171,29 @@ int main() {
         return -1;
     }
     glfwMakeContextCurrent(window);
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        return -1;
+    }
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // hide cursor + capture
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    // Setup Dear ImGui context
-    //IMGUI_CHECKVERSION();
-    //ImGui::CreateContext();
-    //ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard controls
-
-    //// Setup Dear ImGui style
-    //ImGui::StyleColorsDark();
-
-    //// Setup Platform/Renderer backends
-    //ImGui_ImplGlfw_InitForOpenGL(window, true);
-    //ImGui_ImplOpenGL3_Init("#version 460");
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 460");
 
 
-
-
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cout << "Failed to initialize GLAD\n";
-        return -1;
-    }
     glEnable(GL_DEPTH_TEST);
 
-    // build shaders
     Shader objectShader("object.vs", "object.fs");
     Shader lightShader("light.vs", "light.fs");
 
-    // generate sphere mesh
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
     generateSphere(vertices, indices, 36, 18);
@@ -213,7 +219,6 @@ int main() {
 
 
 
-    // physics bodies
     std::vector<Body> bodies;
     bodies.push_back({ glm::vec3(0.0f), glm::vec3(0.0f), 1000.0f, 1.5f, true, glm::vec3(1.0f, 1.0f, 0.6f) });       // central massive body
     float r = 5.0f;
@@ -221,8 +226,8 @@ int main() {
     float v = sqrt(1.0f * sunMass / r);
 
     bodies.push_back({
-        glm::vec3(r, 0.0f, 0.0f),   // position at +X
-        glm::vec3(0.0f, v, 0.0f),   // velocity in +Y for circular orbit
+        glm::vec3(r, 0.0f, 0.0f),
+        glm::vec3(0.0f, v, 0.0f),
         1.0f,
         0.5f,
         false,
@@ -230,89 +235,86 @@ int main() {
         });
 
 
-    // render loop
     while (!glfwWindowShouldClose(window)) {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
         processInput(window);
-        // Start ImGui frame
-        //ImGui_ImplOpenGL3_NewFrame();
-        //ImGui_ImplGlfw_NewFrame();
-        //ImGui::NewFrame();
-        //ImGui::Begin("Simulation Controls");
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH - 300.0f, 0.0f));
+        ImGui::SetNextWindowSize(ImVec2(300.0f, SCR_HEIGHT));
+        ImGui::Begin("Simulation Controls", NULL, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
-        //static float G = 1.0f;       // gravity
-        //static float earthMass = 1.0f;
-        //static float sunMass = 1000.0f;
+        static float G = 1.0f;
+        static float earthMass = 1.0f;
+        static float sunMass = 1000.0f;
 
-        //ImGui::SliderFloat("Gravity G", &G, 0.01f, 10.0f);
-        //ImGui::SliderFloat("Earth Mass", &earthMass, 0.1f, 50.0f);
-        //ImGui::SliderFloat("Sun Mass", &sunMass, 100.0f, 5000.0f);
+        ImGui::SliderFloat("Gravity G", &G, 0.01f, 10.0f);
+        ImGui::SliderFloat("Earth Mass", &earthMass, 0.1f, 50.0f);
+        ImGui::SliderFloat("Sun Mass", &sunMass, 100.0f, 5000.0f);
+        bodies[0].mass = sunMass;
+        bodies[1].mass = earthMass;
 
-        //ImGui::End();
+        ImGui::End();
 
-        updatePhysics(bodies, deltaTime);
+        updatePhysics(bodies, deltaTime, G);
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Setup projection & view matrices
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom),
             (float)SCR_WIDTH / (float)SCR_HEIGHT,
             0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
-        // --- Draw all bodies (planets / Earth) ---
         objectShader.use();
         objectShader.setMat4("projection", projection);
         objectShader.setMat4("view", view);
 
-        // Lighting uniforms
-        objectShader.setVec3("lightPos", glm::vec3(0.0f, 0.0f, 0.0f)); // Sun at center
+        objectShader.setVec3("lightPos", glm::vec3(0.0f, 0.0f, 0.0f));
         objectShader.setVec3("viewPos", camera.Position);
         objectShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
 
         glBindVertexArray(VAO);
 
         for (auto& b : bodies) {
-            if (b.isSun) continue; // skip Sun here
+            if (b.isSun) continue;
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, b.pos);
             model = glm::scale(model, glm::vec3(b.radius));
             objectShader.setMat4("model", model);
 
-            objectShader.setVec3("objectColor", b.color); // give Earth, Mars, etc. unique colors
+            objectShader.setVec3("objectColor", b.color);
 
             glDrawElements(GL_TRIANGLES, (unsigned int)indices.size(), GL_UNSIGNED_INT, 0);
         }
 
-        // --- Draw the Sun ---
         lightShader.use();
         lightShader.setMat4("projection", projection);
         lightShader.setMat4("view", view);
 
         glm::mat4 sunModel = glm::mat4(1.0f);
         sunModel = glm::translate(sunModel, glm::vec3(0.0f, 0.0f, 0.0f));
-        sunModel = glm::scale(sunModel, glm::vec3(2.0f)); // make it bigger
+        sunModel = glm::scale(sunModel, glm::vec3(2.0f));
         lightShader.setMat4("model", sunModel);
-        lightShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 0.8f)); // warm glow
+        lightShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 0.8f));
 
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, (unsigned int)indices.size(), GL_UNSIGNED_INT, 0);
-        // Render ImGui
-       /* ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());*/
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-  /*  ImGui_ImplOpenGL3_Shutdown();*//*
+    ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();*/
+    ImGui::DestroyContext();
 
 
     glfwTerminate();
