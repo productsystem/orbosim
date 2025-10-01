@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <vector>
 #include <iostream>
+#include <random>
 #include "camera.h"
 #include "shader.h"
 
@@ -14,6 +15,8 @@ const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 bool cameraMode = false;
 bool tabPressed = false;
+
+const int NUMBODIES = 1000;
 
 
 Camera camera(glm::vec3(0.0f, 0.0f, 15.0f));
@@ -143,25 +146,52 @@ int main() {
 
     Shader pointShader("point.vs", "point.fs");
 
-    unsigned int VAO;
+    unsigned int VAO, VBO;
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
 
-    unsigned int VBO;
-    glGenBuffers(1, &VBO);
-
     float pointVertex[] = { 0.0f, 0.0f, 0.0f };
+    glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(pointVertex), pointVertex, GL_STATIC_DRAW);
-
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
+    unsigned int instanceVBO, colorVBO;
+    glGenBuffers(1, &instanceVBO);
+    glGenBuffers(1, &colorVBO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribDivisor(1, 1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, colorVBO);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(2);
+    glVertexAttribDivisor(2, 1);
+
 
     std::vector<Body> bodies;
-    bodies.push_back({ glm::vec3(-2, 0, 0), glm::vec3(0, 0.5, 0), 1.0f, glm::vec3(1, 0, 0) });
-    bodies.push_back({ glm::vec3(2, 0, 0), glm::vec3(0, -0.5, 0), 1.0f, glm::vec3(0, 0, 1) });
-    bodies.push_back({ glm::vec3(0, 3, 0), glm::vec3(-0.5, 0, 0), 2.0f, glm::vec3(0, 1, 0) });
+    bodies.reserve(NUMBODIES);
+
+    std::mt19937 rng(std::random_device{}());
+    std::uniform_real_distribution<float> distPos(-50.0f, 50.0f);
+    std::uniform_real_distribution<float> distVel(-0.1f, 0.1f);
+    std::uniform_real_distribution<float> distMass(0.5f, 2.0f);
+    std::uniform_real_distribution<float> distColor(0.0f, 1.0f);
+
+    for (int i = 0; i < NUMBODIES; i++) {
+        bodies.push_back({
+            glm::vec3(distPos(rng), distPos(rng), distPos(rng)),
+            glm::vec3(distVel(rng), distVel(rng), distVel(rng)),
+            distMass(rng),
+            glm::vec3(distColor(rng), distColor(rng), distColor(rng))
+            });
+    }
+
+    std::vector<glm::vec3> instancePositions(bodies.size());
+    std::vector<glm::vec3> instanceColors(bodies.size());
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -177,6 +207,9 @@ int main() {
         ImGui::SetNextWindowPos(ImVec2(SCR_WIDTH - 300.0f, 0.0f));
         ImGui::SetNextWindowSize(ImVec2(300.0f, SCR_HEIGHT));
         ImGui::Begin("Simulation Controls", NULL, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        float fps = 1.0f / deltaTime;
+        ImGui::Text("FPS: %.1f", fps);
+
 
         static float G = 1.0f;
 
@@ -185,6 +218,17 @@ int main() {
         ImGui::End();
 
         updatePhysics(bodies, deltaTime, G);
+
+        for (size_t i = 0; i < bodies.size(); i++) {
+            instancePositions[i] = bodies[i].pos;
+            instanceColors[i] = bodies[i].color;
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferData(GL_ARRAY_BUFFER, bodies.size() * sizeof(glm::vec3), instancePositions.data(), GL_DYNAMIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, colorVBO);
+        glBufferData(GL_ARRAY_BUFFER, bodies.size() * sizeof(glm::vec3), instanceColors.data(), GL_DYNAMIC_DRAW);
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -197,16 +241,8 @@ int main() {
         pointShader.use();
         pointShader.setMat4("projection", projection);
         pointShader.setMat4("view", view);
-
-        for (auto& b : bodies) {
-
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, b.pos);
-            pointShader.setMat4("model", model);
-            pointShader.setVec3("color", b.color);
-            glBindVertexArray(VAO);
-            glDrawArrays(GL_POINTS, 0, 1);
-        }
+        glBindVertexArray(VAO);
+        glDrawArraysInstanced(GL_POINTS, 0, 1, bodies.size());
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
