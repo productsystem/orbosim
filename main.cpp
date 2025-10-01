@@ -18,7 +18,7 @@ bool tabPressed = false;
 
 Camera camera(glm::vec3(0.0f, 0.0f, 15.0f));
 float deltaTime = 0.0f;
-float lastFrame = 0.0f;
+float lastFrame = 0.0f; 
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -27,8 +27,6 @@ struct Body {
     glm::vec3 pos;
     glm::vec3 vel;
     float mass;
-    float radius;
-    bool isSun;
     glm::vec3 color;
 };
 
@@ -88,54 +86,6 @@ void processInput(GLFWwindow* window) {
         
 }
 
-void generateSphere(std::vector<float>& vertices, std::vector<unsigned int>& indices, int sectorCount, int stackCount) {
-    float x, y, z, xy;
-    float sectorStep = 2 * glm::pi<float>() / sectorCount;
-    float stackStep = glm::pi<float>() / stackCount;
-    float sectorAngle, stackAngle;
-
-    for (int i = 0; i <= stackCount; i++) {
-        stackAngle = glm::pi<float>() / 2 - i * stackStep;
-        xy = cosf(stackAngle);
-        z = sinf(stackAngle);
-
-        for (int j = 0; j <= sectorCount; j++) {
-            sectorAngle = j * sectorStep;
-
-            x = xy * cosf(sectorAngle);
-            y = xy * sinf(sectorAngle);
-
-            vertices.push_back(x);
-            vertices.push_back(y);
-            vertices.push_back(z);
-
-            glm::vec3 normal = glm::normalize(glm::vec3(x, y, z));
-            vertices.push_back(normal.x);
-            vertices.push_back(normal.y);
-            vertices.push_back(normal.z);
-        }
-    }
-
-    for (int i = 0; i < stackCount; i++) {
-        int k1 = i * (sectorCount + 1);
-        int k2 = k1 + sectorCount + 1;
-
-        for (int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
-            if (i != 0) {
-                indices.push_back(k1);
-                indices.push_back(k2);
-                indices.push_back(k1 + 1);
-            }
-            if (i != (stackCount - 1)) {
-                indices.push_back(k1 + 1);
-                indices.push_back(k2);
-                indices.push_back(k2 + 1);
-            }
-        }
-    }
-}
-
-
 void updatePhysics(std::vector<Body>& bodies, float dt, float Ga) {
     const float G = Ga;
     std::vector<glm::vec3> forces(bodies.size(), glm::vec3(0.0f));
@@ -188,51 +138,30 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 460");
 
-
+    glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
-    Shader objectShader("object.vs", "object.fs");
-    Shader lightShader("light.vs", "light.fs");
+    Shader pointShader("point.vs", "point.fs");
 
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-    generateSphere(vertices, indices, 36, 18);
-
-    unsigned int VAO, VBO, EBO;
+    unsigned int VAO;
     glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-
     glBindVertexArray(VAO);
 
+    unsigned int VBO;
+    glGenBuffers(1, &VBO);
+
+    float pointVertex[] = { 0.0f, 0.0f, 0.0f };
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pointVertex), pointVertex, GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
 
 
     std::vector<Body> bodies;
-    bodies.push_back({ glm::vec3(0.0f), glm::vec3(0.0f), 1000.0f, 1.5f, true, glm::vec3(1.0f, 1.0f, 0.6f) });       // central massive body
-    float r = 5.0f;
-    float sunMass = 1000.0f;
-    float v = sqrt(1.0f * sunMass / r);
-
-    bodies.push_back({
-        glm::vec3(r, 0.0f, 0.0f),
-        glm::vec3(0.0f, v, 0.0f),
-        1.0f,
-        0.5f,
-        false,
-        glm::vec3(0.2f, 0.3f, 1.0f)
-        });
+    bodies.push_back({ glm::vec3(-2, 0, 0), glm::vec3(0, 0.5, 0), 1.0f, glm::vec3(1, 0, 0) });
+    bodies.push_back({ glm::vec3(2, 0, 0), glm::vec3(0, -0.5, 0), 1.0f, glm::vec3(0, 0, 1) });
+    bodies.push_back({ glm::vec3(0, 3, 0), glm::vec3(-0.5, 0, 0), 2.0f, glm::vec3(0, 1, 0) });
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -241,6 +170,7 @@ int main() {
         lastFrame = currentFrame;
 
         processInput(window);
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -249,14 +179,8 @@ int main() {
         ImGui::Begin("Simulation Controls", NULL, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
 
         static float G = 1.0f;
-        static float earthMass = 1.0f;
-        static float sunMass = 1000.0f;
 
         ImGui::SliderFloat("Gravity G", &G, 0.01f, 10.0f);
-        ImGui::SliderFloat("Earth Mass", &earthMass, 0.1f, 50.0f);
-        ImGui::SliderFloat("Sun Mass", &sunMass, 100.0f, 5000.0f);
-        bodies[0].mass = sunMass;
-        bodies[1].mass = earthMass;
 
         ImGui::End();
 
@@ -270,41 +194,19 @@ int main() {
             0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
 
-        objectShader.use();
-        objectShader.setMat4("projection", projection);
-        objectShader.setMat4("view", view);
-
-        objectShader.setVec3("lightPos", glm::vec3(0.0f, 0.0f, 0.0f));
-        objectShader.setVec3("viewPos", camera.Position);
-        objectShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-
-        glBindVertexArray(VAO);
+        pointShader.use();
+        pointShader.setMat4("projection", projection);
+        pointShader.setMat4("view", view);
 
         for (auto& b : bodies) {
-            if (b.isSun) continue;
 
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, b.pos);
-            model = glm::scale(model, glm::vec3(b.radius));
-            objectShader.setMat4("model", model);
-
-            objectShader.setVec3("objectColor", b.color);
-
-            glDrawElements(GL_TRIANGLES, (unsigned int)indices.size(), GL_UNSIGNED_INT, 0);
+            pointShader.setMat4("model", model);
+            pointShader.setVec3("color", b.color);
+            glBindVertexArray(VAO);
+            glDrawArrays(GL_POINTS, 0, 1);
         }
-
-        lightShader.use();
-        lightShader.setMat4("projection", projection);
-        lightShader.setMat4("view", view);
-
-        glm::mat4 sunModel = glm::mat4(1.0f);
-        sunModel = glm::translate(sunModel, glm::vec3(0.0f, 0.0f, 0.0f));
-        sunModel = glm::scale(sunModel, glm::vec3(2.0f));
-        lightShader.setMat4("model", sunModel);
-        lightShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 0.8f));
-
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, (unsigned int)indices.size(), GL_UNSIGNED_INT, 0);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

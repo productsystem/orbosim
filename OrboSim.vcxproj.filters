@@ -94,5 +94,11 @@
     <None Include="light.fs">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="point.fs">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="point.vs">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
